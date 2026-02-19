@@ -1,0 +1,61 @@
+{
+  "manifest_version": 3,
+  "name": "OmniCoder v2.0 — AI 자동 코딩 시스템",
+  "version": "2.0.0",
+  "description": "Claude 채팅 두뇌(무료) + 저렴한 API 실행 = 완전 자동 코딩",
+  "permissions": [
+    "storage",
+    "activeTab",
+    "tabs",
+    "cookies",
+    "notifications",
+    "clipboardRead",
+    "clipboardWrite",
+    "downloads",
+    "alarms",
+    "scripting",
+    "offscreen"
+  ],
+  "host_permissions": [
+    "https://www.genspark.ai/*",
+    "https://api.anthropic.com/*"
+  ],
+  "background": {
+    "service_worker": "service-worker-loader.js",
+    "type": "module"
+  },
+  "action": {
+    "default_icon": {
+      "16": "src/assets/icon16.png",
+      "48": "src/assets/icon48.png",
+      "128": "src/assets/icon128.png"
+    }
+  },
+  "icons": {
+    "16": "src/assets/icon16.png",
+    "48": "src/assets/icon48.png",
+    "128": "src/assets/icon128.png"
+  },
+  "content_scripts": [
+    {
+      "js": [
+        "assets/genspark-monitor.ts-CZeEDH1s.js"
+      ],
+      "matches": [
+        "https://www.genspark.ai/*"
+      ],
+      "run_at": "document_idle"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "matches": [
+        "https://www.genspark.ai/*"
+      ],
+      "resources": [
+        "assets/genspark-monitor.ts-CZeEDH1s.js"
+      ],
+      "use_dynamic_url": false
+    }
+  ]
+}
