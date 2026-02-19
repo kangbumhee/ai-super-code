@@ -5,7 +5,6 @@
 (() => {
   'use strict';
 
-  // ─── 셀렉터 ─────────────────────────────────────────────────
   const SELECTORS: Record<string, string | string[]> = {
     userMessage: '.conversation-statement.user .content',
     userMessageFallbacks: [
@@ -30,13 +29,13 @@
     stopButton: '.stop-generation-btn',
   };
 
-  let lastMessageCount = 0;
-  let isResponseInProgress = false;
-  let pendingDetection = false;
+  let lastMessageCount = -1;
   let isEnabled = true;
-  let observer: MutationObserver | null = null;
   let pollTimer: ReturnType<typeof setInterval> | null = null;
-  let lastSentText = '';
+  let lastSentKey = '';
+  let stableText = '';
+  let stableCount = 0;
+  let initDone = false;
 
   // ─── 헬퍼 ───────────────────────────────────────────────────
   function $(sel: string, fallbacks?: string[]): Element | null {
@@ -111,7 +110,6 @@
         if (text) text.textContent = isEnabled ? 'OmniCoder 감시 중' : 'OmniCoder 꺼짐';
       });
 
-      // 드래그
       let isDragging = false;
       let offsetX = 0;
       let offsetY = 0;
@@ -131,10 +129,42 @@
         inner.style.bottom = 'auto';
       });
 
-      document.addEventListener('mouseup', () => {
-        isDragging = false;
-      });
+      document.addEventListener('mouseup', () => { isDragging = false; });
     }
+  }
+
+  // ─── 핵심: Genspark이 아직 생성 중인지 판별 ─────────────────
+  function isGenerating(): boolean {
+    // 방법 1: enter-icon-wrapper 안에 svg.stop-icon이 있으면 생성 중
+    const enterWrapper = document.querySelector('.enter-icon-wrapper');
+    if (enterWrapper) {
+      const stopIcon = enterWrapper.querySelector('svg.stop-icon');
+      if (stopIcon) {
+        console.log('[OmniCoder] isGenerating: stop-icon 발견 → 생성 중');
+        return true;
+      }
+      // SVG의 class에 stop이 포함된 경우도 체크
+      const svgs = enterWrapper.querySelectorAll('svg');
+      for (const svg of Array.from(svgs)) {
+        const cls = svg.getAttribute('class') || '';
+        if (cls.includes('stop')) {
+          console.log('[OmniCoder] isGenerating: svg class에 stop 포함 → 생성 중');
+          return true;
+        }
+      }
+    }
+
+    // 방법 2: stop-generation-btn
+    const stopBtn = document.querySelector('.stop-generation-btn');
+    if (stopBtn) {
+      const style = window.getComputedStyle(stopBtn);
+      if (style.display !== 'none' && style.visibility !== 'hidden') {
+        console.log('[OmniCoder] isGenerating: stop-generation-btn 보임 → 생성 중');
+        return true;
+      }
+    }
+
+    return false;
   }
 
   // ─── 대화 추출 ──────────────────────────────────────────────
@@ -159,9 +189,16 @@
     const lastAssistant = assistantEls[assistantEls.length - 1];
 
     const userText = (lastUser.textContent || '').trim();
-    const assistantText = (lastAssistant.textContent || '')
+    let assistantText = (lastAssistant.textContent || '')
       .trim()
+      .replace(/█/g, '')
+      .replace(/▊/g, '')
+      .replace(/▋/g, '')
       .replace(/\n?추가 작업\s*$/, '')
+      .replace(/^Copy\n?/gm, '')
+      .replace(/\nCopy$/gm, '')
+      .replace(/Copy$/gm, '')
+      .replace(/\s+$/, '')
       .trim();
 
     if (!userText || !assistantText) return null;
@@ -176,68 +213,33 @@
     };
   }
 
-  // ─── 응답 완료 감지 ─────────────────────────────────────────
-  function isStopButtonVisible(): boolean {
-    const stop = $(SELECTORS.stopButton as string);
-    if (!stop) return false;
-    const style = window.getComputedStyle(stop);
-    return style.display !== 'none' && style.visibility !== 'hidden';
-  }
-
-  function isResponseComplete(): boolean {
-    if (isStopButtonVisible()) return false;
-    const assistants = document.querySelectorAll(
-      SELECTORS.assistantMessage as string
-    );
-    if (assistants.length === 0) return false;
-    const last = assistants[assistants.length - 1];
-    const lastText = last.textContent?.trim() || '';
-    if (lastText.startsWith('Thinking') && lastText.length < 30) return false;
-    if (lastText === '') return false;
-    // 스트리밍 중 cursor 감지
-    if (last.querySelector('.cursor, [class*="cursor"]')) return false;
-    return true;
-  }
-
-  // ─── 새 메시지 감지 핸들러 ──────────────────────────────────
-  function onNewMessageDetected(): void {
-    if (!isEnabled) return;
-
-    const exchange = getLatestExchange();
-    if (!exchange) return;
-
-    const currentCount = exchange.messageCount;
-    if (currentCount <= lastMessageCount) return;
-
-    // Thinking 상태면 3초 후 다시 시도
-    const resp = exchange.claudeResponse.trim();
-    if (!resp || (resp.startsWith('Thinking') && resp.length < 30)) {
-      setTimeout(() => onNewMessageDetected(), 3000);
+  // ─── 메시지 전송 ───────────────────────────────────────────
+  function sendDetection(exchange: {
+    userMessage: string;
+    claudeResponse: string;
+    timestamp: number;
+    messageCount: number;
+  }): void {
+    const key = exchange.claudeResponse.slice(0, 200);
+    if (key === lastSentKey) {
+      console.log('[OmniCoder] 중복 → 스킵');
       return;
     }
-
-    if (!isResponseComplete()) {
-      setTimeout(() => onNewMessageDetected(), 3000);
-      return;
-    }
-
-    // 중복 방지
-    const key = `${currentCount}:${resp.slice(0, 100)}`;
-    if (key === lastSentText) return;
-    lastSentText = key;
-    lastMessageCount = currentCount;
+    lastSentKey = key;
+    lastMessageCount = exchange.messageCount;
 
     console.log('[OmniCoder] 새 대화 감지:', {
       user: exchange.userMessage.slice(0, 60),
       assistant: exchange.claudeResponse.slice(0, 60),
-      count: currentCount,
+      count: exchange.messageCount,
     });
 
     const text = document.getElementById('omnicoder-text');
     if (text) {
       text.textContent = '감지됨!';
       setTimeout(() => {
-        if (text) text.textContent = 'OmniCoder 감시 중';
+        const t = document.getElementById('omnicoder-text');
+        if (t) t.textContent = 'OmniCoder 감시 중';
       }, 2000);
     }
 
@@ -261,138 +263,62 @@
     );
   }
 
-  // ─── MutationObserver ───────────────────────────────────────
-  let completeCheckTimer: ReturnType<typeof setTimeout> | null = null;
-
-  function checkResponseComplete(): void {
-    if (completeCheckTimer) clearTimeout(completeCheckTimer);
-
-    completeCheckTimer = setTimeout(() => {
-      if (isResponseComplete() || !isStopButtonVisible()) {
-        isResponseInProgress = false;
-        if (pendingDetection) {
-          pendingDetection = false;
-          onNewMessageDetected();
-        }
-      } else {
-        checkResponseComplete();
-      }
-    }, 1500);
-  }
-
-  function startObserver(): void {
-    const container = $(
-      SELECTORS.chatContainer as string,
-      SELECTORS.chatContainerFallbacks as string[]
-    );
-
-    const target = container || document.querySelector('main') || document.body;
-
-    observer = new MutationObserver((mutations) => {
-      if (!isEnabled) return;
-
-      for (const mutation of mutations) {
-        if (mutation.type === 'childList' && mutation.addedNodes.length > 0) {
-          for (const node of Array.from(mutation.addedNodes)) {
-            if (!(node instanceof HTMLElement)) continue;
-
-            if (
-              node.classList?.contains('conversation-statement') ||
-              node.querySelector?.('.conversation-statement')
-            ) {
-              if (
-                node.classList?.contains('assistant') ||
-                node.querySelector?.('.conversation-statement.assistant')
-              ) {
-                isResponseInProgress = true;
-                pendingDetection = true;
-              }
-            }
-          }
-        }
-
-        if (mutation.type === 'characterData' || mutation.type === 'childList') {
-          if (isResponseInProgress && pendingDetection) {
-            checkResponseComplete();
-          }
-        }
-      }
-    });
-
-    observer.observe(target, {
-      childList: true,
-      subtree: true,
-      characterData: true,
-    });
-
-    console.log('[OmniCoder] Observer 시작, 타겟:', target.className || target.tagName);
-  }
-
-  // ─── 폴링 (응답 내용 변화 감지) ───────────────────────────────
-  let lastAssistantText = '';
-
+  // ─── 폴링 (유일한 감지 경로) ───────────────────────────────
   function startPolling(): void {
     pollTimer = setInterval(() => {
       if (!isEnabled) return;
 
+      // 1. 생성 중이면 무조건 대기
+      if (isGenerating()) {
+        stableCount = 0;
+        stableText = '';
+        return;
+      }
+
+      // 2. 대화 추출
       const exchange = getLatestExchange();
       if (!exchange) return;
 
-      const resp = exchange.claudeResponse.trim();
+      const resp = exchange.claudeResponse;
 
-      // 응답이 완료되고 이전과 다르면 감지
-      if (
-        resp &&
-        resp !== lastAssistantText &&
-        !(resp.startsWith('Thinking') && resp.length < 30) &&
-        resp.length > 10 &&
-        isResponseComplete()
-      ) {
-        const key = `${exchange.messageCount}:${resp.slice(0, 100)}`;
-        if (key === lastSentText) return;
-        lastSentText = key;
-        lastAssistantText = resp;
-        if (exchange.messageCount >= lastMessageCount) {
-          lastMessageCount = exchange.messageCount;
+      // 3. 기본 필터
+      if (!resp || resp.length < 30) return;
+      if (resp.startsWith('Thinking') && resp.length < 50) return;
 
-          console.log('[OmniCoder] 새 대화 감지 (폴링):', {
-            user: exchange.userMessage.slice(0, 60),
-            assistant: resp.slice(0, 60),
-            count: exchange.messageCount,
-          });
-
-          const text = document.getElementById('omnicoder-text');
-          if (text) {
-            text.textContent = '감지됨!';
-            setTimeout(() => {
-              if (text) text.textContent = 'OmniCoder 감시 중';
-            }, 2000);
-          }
-
-          chrome.runtime.sendMessage(
-            {
-              type: 'NEW_CHAT_DETECTED',
-              data: {
-                userMessage: exchange.userMessage,
-                claudeResponse: resp,
-                timestamp: exchange.timestamp,
-                messageCount: exchange.messageCount,
-              },
-            },
-            (response) => {
-              if (chrome.runtime.lastError) {
-                console.warn('[OmniCoder] sendMessage error:', chrome.runtime.lastError.message);
-              } else {
-                console.log('[OmniCoder] Background 응답:', response);
-              }
-            }
-          );
-        }
+      // 4. 중복 체크 — 응답 내용(앞 200자)이 이미 전송한 것과 같으면 스킵
+      const key = resp.slice(0, 200);
+      if (key === lastSentKey) {
+        return;
       }
+
+      // 5. 안정성 체크: 텍스트가 3번 연속(9초) 같아야 완료
+      if (resp === stableText) {
+        stableCount++;
+        console.log('[OmniCoder] 안정성 체크:', stableCount, '/3');
+      } else {
+        stableText = resp;
+        stableCount = 1;
+        console.log('[OmniCoder] 텍스트 변경 감지 → 안정성 리셋');
+        return;
+      }
+
+      if (stableCount < 3) return;
+
+      // 7. 마지막으로 한 번 더 isGenerating 체크
+      if (isGenerating()) {
+        stableCount = 0;
+        return;
+      }
+
+      console.log('[OmniCoder] ✅ 안정성 확인 완료 (3회 연속 동일, 생성 버튼 없음) → 전송');
+
+      // 8. 전송!
+      sendDetection(exchange);
+
     }, 3000);
   }
 
-  // ─── MONITOR_STATUS 수신 ───────────────────────────────────
+  // ─── MONITOR_STATUS / SEND_TO_GENSPARK 수신 ─────────────────
   chrome.runtime.onMessage.addListener(
     (msg: { type: string; data?: unknown }) => {
       if (msg.type === 'MONITOR_STATUS') {
@@ -404,7 +330,6 @@
         if (text) text.textContent = isEnabled ? 'OmniCoder 감시 중' : 'OmniCoder 꺼짐';
       }
 
-      // Genspark에 메시지 자동 입력 + 전송 (background에서 요청)
       if (msg.type === 'SEND_TO_GENSPARK') {
         const { message } = msg.data as { message: string };
         const textarea = document.querySelector('textarea.j-search-input') as HTMLTextAreaElement | null;
@@ -478,47 +403,9 @@
     }
   }
 
-  // ─── Genspark 자동 로그인 (쿠키 기반) ───────────────────────
-  function attemptGensparkLogin(): void {
-    setTimeout(() => {
-      try {
-        chrome.storage.sync.get('omnicoder_settings', (result) => {
-          const cookiesStr = result?.omnicoder_settings?.gensparkCookies;
-          if (!cookiesStr) return;
-
-          const loginIndicators = document.querySelectorAll(
-            '[class*="avatar"], [class*="profile"], [class*="user-info"], [class*="account"]'
-          );
-          if (loginIndicators.length > 0) {
-            console.log('[OmniCoder] Genspark 이미 로그인됨');
-            return;
-          }
-
-          try {
-            const cookies = JSON.parse(cookiesStr);
-            if (Array.isArray(cookies) && cookies.length > 0) {
-              chrome.runtime.sendMessage(
-                { type: 'GENSPARK_LOGIN', data: { cookies } },
-                (response) => {
-                  if (response?.success) {
-                    console.log('[OmniCoder] Genspark 쿠키 설정 완료');
-                    setTimeout(() => location.reload(), 1500);
-                  }
-                }
-              );
-            }
-          } catch (e) {
-            console.warn('[OmniCoder] 쿠키 파싱 실패:', e);
-          }
-        });
-      } catch (err) {
-        console.warn('[OmniCoder] 로그인 시도 실패:', err);
-      }
-    }, 2000);
-  }
-
   // ─── 초기화 ─────────────────────────────────────────────────
   function init(): void {
+    if (initDone) return;
     console.log('[OmniCoder] Genspark 모니터 초기화 시작');
 
     const tryInit = setInterval(() => {
@@ -529,38 +416,44 @@
 
       if (!window.location.pathname.startsWith('/agents')) {
         clearInterval(tryInit);
-        attemptGensparkLogin();
         return;
       }
 
       if (container || document.querySelector('.chat-wrapper')) {
         clearInterval(tryInit);
+        initDone = true;
         console.log('[OmniCoder] 채팅 컨테이너 발견');
 
         createBadge();
         loadSelectorOverrides();
-        startObserver();
-        startPolling();
-        attemptGensparkLogin();
 
+        // 현재 메시지 수를 기록해서 "이미 있는 메시지"는 감지하지 않음
         const exchange = getLatestExchange();
         if (exchange) {
-          lastMessageCount = 0; // 0으로 설정해서 폴링 첫 회차에 바로 감지 가능
-          lastAssistantText = '';
-          console.log('[OmniCoder] 초기화 완료 (폴링 대기)');
+          lastMessageCount = exchange.messageCount;
+          lastSentKey = exchange.claudeResponse.slice(0, 200) || '';
+          console.log('[OmniCoder] 초기 lastSentKey 설정:', lastSentKey.slice(0, 50) + (lastSentKey.length > 50 ? '...' : ''));
+          console.log('[OmniCoder] 기존 메시지 수:', lastMessageCount, '→ 이후 응답 내용 변경 시 감지');
+        } else {
+          lastMessageCount = 0;
         }
+
+        // 폴링만 사용 (Observer는 제거 — 불필요한 조기 감지 방지)
+        startPolling();
+
+        console.log('[OmniCoder] 초기화 완료 (폴링 3초 간격, 안정성 3회=9초)');
       }
     }, 1000);
 
     setTimeout(() => {
       clearInterval(tryInit);
-      if (!observer) {
+      if (!initDone) {
         console.log('[OmniCoder] 30초 타임아웃 — 강제 시작');
+        initDone = true;
         createBadge();
         loadSelectorOverrides();
-        startObserver();
+        lastMessageCount = 0;
         startPolling();
-        attemptGensparkLogin();
       }
     }, 30000);
   }
@@ -572,21 +465,17 @@
       lastUrl = location.href;
       console.log('[OmniCoder] URL 변경 감지:', lastUrl);
 
-      if (observer) {
-        observer.disconnect();
-        observer = null;
-      }
       if (pollTimer) {
         clearInterval(pollTimer);
         pollTimer = null;
       }
-      lastMessageCount = 0;
-      isResponseInProgress = false;
-      pendingDetection = false;
-      lastSentText = '';
+      // 리셋하지만 initDone도 리셋해서 새로 초기화
+      stableText = '';
+      stableCount = 0;
+      initDone = false;
 
       if (lastUrl.includes('/agents')) {
-        setTimeout(init, 1000);
+        setTimeout(init, 2000);
       }
     }
   });

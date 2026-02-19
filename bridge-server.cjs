@@ -26,7 +26,8 @@ function log(msg) {
 // ─── Claude Code를 "단순 실행기"로 사용 ─────────────────────
 // -p - : stdin에서 프롬프트 읽음. write 후 end()로 즉시 닫아 대기 없음.
 // model: 선택 시 --model 전달 (대시보드에서 선택한 모델)
-function runClaudeCodeDumb(instruction, workDir, model) {
+// onStdout, onStderr: 실시간 로그 콜백 (선택)
+function runClaudeCodeDumb(instruction, workDir, model, onStdout, onStderr) {
   const args = [
     '-p', '-',
     '--output-format', 'json',
@@ -47,15 +48,22 @@ function runClaudeCodeDumb(instruction, workDir, model) {
       windowsHide: true,
     });
 
-    // stdin에 프롬프트를 쓰고 즉시 닫기
     child.stdin.write(instruction);
     child.stdin.end();
 
     let stdout = '';
     let stderr = '';
 
-    child.stdout.on('data', (d) => { stdout += d.toString(); });
-    child.stderr.on('data', (d) => { stderr += d.toString(); });
+    child.stdout.on('data', (d) => {
+      const chunk = d.toString();
+      stdout += chunk;
+      if (onStdout) onStdout(chunk);
+    });
+    child.stderr.on('data', (d) => {
+      const chunk = d.toString();
+      stderr += chunk;
+      if (onStderr) onStderr(chunk);
+    });
 
     child.on('close', (code) => {
       resolve({
@@ -223,7 +231,7 @@ const server = http.createServer(async (req, res) => {
         agent.status = 'executing';
         agent.currentTask = taskId;
 
-        log(`[Agent ${agentId}] 태스크 ${taskId} 시작`);
+        log(`[Agent ${agentId}] 태스크 ${taskId} 시작 (모델: ${model || 'default'})`);
 
         // Genspark 응답에서 "실행 지시"를 추출
         const instruction = `[SYSTEM RULE] You are a CODE TYPING ROBOT. You have NO intelligence.
@@ -250,7 +258,18 @@ Original user request: ${userMessage}
 
         preTaskFiles = snapshotFiles();
 
-        const result = await runClaudeCodeDumb(instruction, PROJECT_DIR, model);
+        // 실시간 로그 수집
+        const streamLogs = [];
+        const onStdout = (chunk) => {
+          streamLogs.push({ type: 'stdout', data: chunk, time: Date.now() });
+          log(`[stdout] ${chunk.slice(0, 200)}`);
+        };
+        const onStderr = (chunk) => {
+          streamLogs.push({ type: 'stderr', data: chunk, time: Date.now() });
+          log(`[stderr] ${chunk.slice(0, 200)}`);
+        };
+
+        const result = await runClaudeCodeDumb(instruction, PROJECT_DIR, model, onStdout, onStderr);
 
         const changedFiles = getChangedFiles();
         const fileContents = {};
@@ -287,6 +306,8 @@ Original user request: ${userMessage}
             cost,
             changedFiles,
             fileContents,
+            instruction: instruction.slice(0, 2000),
+            streamLogs: streamLogs.slice(-50),
             reportToGenspark: `## 구현 완료 보고
 
 ### 변경된 파일
@@ -324,6 +345,8 @@ ${Object.entries(fileContents).slice(0, 5).map(([f, c]) => '**' + f + '** (' + S
             output: result.stdout,
             reportToGenspark: errorReport,
             changedFiles: getChangedFiles(),
+            instruction: instruction.slice(0, 2000),
+            streamLogs: streamLogs.slice(-50),
           }));
         }
         return;

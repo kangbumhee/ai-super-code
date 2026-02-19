@@ -325,7 +325,13 @@ async function executeTaskViaBridge(task: Task): Promise<void> {
         model: 'claude-code',
         files,
         agentRole: 'complete',
-      });
+        detail: {
+          instruction: result.instruction || '',
+          streamLogs: result.streamLogs || [],
+          output: (result.output || '').slice(0, 3000),
+          changedFiles: result.changedFiles || [],
+        },
+      } as ProgressUpdate & { detail?: unknown });
 
       if (result.reportToGenspark) {
         await sendToGenspark(result.reportToGenspark);
@@ -342,7 +348,13 @@ async function executeTaskViaBridge(task: Task): Promise<void> {
         status: '에러 발생 → Genspark에 보고 중...',
         model: 'claude-code',
         agentRole: 'error-report',
-      });
+        detail: {
+          instruction: result.instruction || '',
+          streamLogs: result.streamLogs || [],
+          error: result.error || '',
+          output: (result.output || '').slice(0, 3000),
+        },
+      } as ProgressUpdate & { detail?: unknown });
 
       if (result.reportToGenspark) {
         await sendToGenspark(result.reportToGenspark);

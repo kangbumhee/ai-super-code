@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { useDashboardStore } from './store';
 import ControlPanel from './components/ControlPanel';
 import TaskManager from './components/TaskManager';
@@ -30,12 +30,29 @@ export default function App() {
     isConnected
   } = useDashboardStore();
 
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // 초기 로드 + 2초 폴링 (5초 → 2초로 단축)
   useEffect(() => {
     loadAllData();
-    const interval = setInterval(loadAllData, 5000);
-    return () => clearInterval(interval);
+    intervalRef.current = setInterval(loadAllData, 2000);
+    return () => {
+      if (intervalRef.current) clearInterval(intervalRef.current);
+    };
   }, [loadAllData]);
 
+  // visibility change 대응: 탭 돌아오면 즉시 새로고침
+  useEffect(() => {
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        loadAllData();
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibility);
+    return () => document.removeEventListener('visibilitychange', handleVisibility);
+  }, [loadAllData]);
+
+  // 실시간 메시지 수신
   useEffect(() => {
     const listener = (msg: { type: string; data: unknown }) => {
       if (msg.type === 'STATE_UPDATE') {
@@ -44,11 +61,13 @@ export default function App() {
       }
       if (msg.type === 'PROGRESS_UPDATE') {
         setProgress(msg.data as Parameters<typeof setProgress>[0]);
+        // progress 올 때마다 state도 새로 불러오기
+        loadAllData();
       }
     };
     chrome.runtime.onMessage.addListener(listener);
     return () => chrome.runtime.onMessage.removeListener(listener);
-  }, [setState, setProgress]);
+  }, [setState, setProgress, loadAllData]);
 
   const renderTab = () => {
     switch (activeTab) {

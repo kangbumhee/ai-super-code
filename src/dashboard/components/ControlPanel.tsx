@@ -176,16 +176,21 @@ export default function ControlPanel() {
         </div>
       )}
 
-      {progress && progress.status !== '완료!' && (
+      {progress && (
         <div className="bg-gray-900 rounded-xl p-4 border border-gray-800 animate-fade-in">
           <div className="flex justify-between items-center mb-2">
-            <h3 className="font-bold text-sm">진행 중 ({progress.agentRole ?? ''})</h3>
+            <h3 className="font-bold text-sm">
+              {progress.agentRole === 'complete' ? '✅ 완료' : `⚡ 진행 중 (${progress.agentRole ?? ''})`}
+            </h3>
             <span className="text-xs text-gray-500 font-mono">{progress.model}</span>
           </div>
           <p className="text-sm text-gray-300 mb-3">{progress.status}</p>
           <div className="w-full bg-gray-800 rounded-full h-2.5">
             <div
-              className="bg-accent-500 h-2.5 rounded-full transition-all duration-500"
+              className={`h-2.5 rounded-full transition-all duration-500 ${
+                progress.agentRole === 'complete' ? 'bg-green-500' :
+                progress.agentRole === 'error-report' ? 'bg-red-500' : 'bg-accent-500'
+              }`}
               style={{ width: `${progressPercent}%` }}
             />
           </div>
@@ -193,6 +198,79 @@ export default function ControlPanel() {
             <span>단계: {progress.step}/{progress.maxSteps}</span>
             <span>비용: ₩{progress.cost != null ? Math.round(progress.cost * 1450).toLocaleString() : '0'}</span>
           </div>
+
+          {/* 실시간 상세 로그 */}
+          {(() => {
+            const detail = (progress as unknown as Record<string, unknown>).detail as undefined | {
+              instruction?: string;
+              streamLogs?: Array<{ type: string; data: string; time: number }>;
+              output?: string;
+              error?: string;
+              changedFiles?: string[];
+            };
+            if (!detail) return null;
+            return (
+              <div className="mt-4 space-y-3">
+                {detail.instruction && (
+                  <details className="group">
+                    <summary className="text-xs text-purple-400 cursor-pointer hover:text-purple-300">
+                      📝 Claude Code에 보낸 프롬프트 (클릭하여 펼치기)
+                    </summary>
+                    <pre className="mt-2 text-xs text-gray-400 bg-gray-800 rounded p-3 max-h-40 overflow-y-auto whitespace-pre-wrap break-words">
+                      {detail.instruction}
+                    </pre>
+                  </details>
+                )}
+
+                {detail.streamLogs && detail.streamLogs.length > 0 && (
+                  <details open className="group">
+                    <summary className="text-xs text-blue-400 cursor-pointer hover:text-blue-300">
+                      🖥️ Claude Code 실행 로그 ({detail.streamLogs.length}줄)
+                    </summary>
+                    <div className="mt-2 bg-black rounded p-3 max-h-60 overflow-y-auto font-mono text-xs">
+                      {detail.streamLogs.map((log, i) => (
+                        <div key={i} className={`${log.type === 'stderr' ? 'text-yellow-400' : 'text-green-400'} break-words`}>
+                          <span className="text-gray-600">[{new Date(log.time).toLocaleTimeString()}]</span>{' '}
+                          {log.data.trim()}
+                        </div>
+                      ))}
+                    </div>
+                  </details>
+                )}
+
+                {detail.output && (
+                  <details className="group">
+                    <summary className="text-xs text-green-400 cursor-pointer hover:text-green-300">
+                      📄 Claude Code 최종 출력
+                    </summary>
+                    <pre className="mt-2 text-xs text-gray-400 bg-gray-800 rounded p-3 max-h-40 overflow-y-auto whitespace-pre-wrap break-words">
+                      {detail.output}
+                    </pre>
+                  </details>
+                )}
+
+                {detail.error && (
+                  <details open className="group">
+                    <summary className="text-xs text-red-400 cursor-pointer hover:text-red-300">
+                      ❌ 에러 내용
+                    </summary>
+                    <pre className="mt-2 text-xs text-red-300 bg-red-900/30 rounded p-3 max-h-40 overflow-y-auto whitespace-pre-wrap break-words">
+                      {detail.error}
+                    </pre>
+                  </details>
+                )}
+
+                {detail.changedFiles && detail.changedFiles.length > 0 && (
+                  <div className="text-xs text-gray-400">
+                    <span className="text-gray-500">변경된 파일:</span>{' '}
+                    {detail.changedFiles.map((f, i) => (
+                      <span key={i} className="inline-block bg-gray-800 rounded px-1.5 py-0.5 mr-1 mt-1 text-blue-300">{f}</span>
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          })()}
         </div>
       )}
 

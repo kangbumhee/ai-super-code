@@ -40,7 +40,7 @@
   "content_scripts": [
     {
       "js": [
-        "assets/genspark-monitor.ts-DCtTyUyw.js"
+        "assets/genspark-monitor.ts-BacmJbf-.js"
       ],
       "matches": [
         "https://www.genspark.ai/*"
@@ -54,7 +54,7 @@
         "https://www.genspark.ai/*"
       ],
       "resources": [
-        "assets/genspark-monitor.ts-DCtTyUyw.js"
+        "assets/genspark-monitor.ts-BacmJbf-.js"
       ],
       "use_dynamic_url": false
     }

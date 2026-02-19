@@ -10,7 +10,7 @@
     "name": "index"
   },
   "src/background/index.ts": {
-    "file": "assets/index.ts-YQ2vCJ0B.js",
+    "file": "assets/index.ts-DEs1j1DF.js",
     "name": "index.ts",
     "src": "src/background/index.ts",
     "isEntry": true,
@@ -19,13 +19,13 @@
     ]
   },
   "src/content/genspark-monitor.ts": {
-    "file": "assets/genspark-monitor.ts-DCtTyUyw.js",
+    "file": "assets/genspark-monitor.ts-BacmJbf-.js",
     "name": "genspark-monitor.ts",
     "src": "src/content/genspark-monitor.ts",
     "isEntry": true
   },
   "src/dashboard/index.html": {
-    "file": "assets/dashboard-DOQbjB1O.js",
+    "file": "assets/dashboard-D3DwyNRC.js",
     "name": "dashboard",
     "src": "src/dashboard/index.html",
     "isEntry": true,
@@ -33,7 +33,7 @@
       "_index-khUcrBfW.js"
     ],
     "css": [
-      "assets/dashboard-DRYe8qr3.css"
+      "assets/dashboard-3N6ZlFDF.css"
     ]
   }
 }
