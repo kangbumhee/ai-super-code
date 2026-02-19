@@ -29,6 +29,7 @@ export type MessageType =
   | 'NEW_CHAT_DETECTED'
   | 'APPROVE_TASK'
   | 'SKIP_TASK'
+  | 'DELETE_TASK'
   | 'GET_STATE'
   | 'STATE_UPDATE'
   | 'PROGRESS_UPDATE'

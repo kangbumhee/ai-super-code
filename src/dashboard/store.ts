@@ -40,6 +40,7 @@ interface DashboardStore {
   skipTask: (taskId: string) => Promise<void>;
   cancelTask: (taskId: string) => Promise<void>;
   retryTask: (taskId: string) => Promise<void>;
+  deleteTask: (taskId: string) => Promise<void>;
   saveSettings: (s: Partial<OmniCoderSettings>) => Promise<void>;
   testApi: (apiKey?: string) => Promise<{ success: boolean; message: string }>;
   exportData: () => Promise<string>;
@@ -142,6 +143,11 @@ export const useDashboardStore = create<DashboardStore>((set, get) => ({
 
   retryTask: async (taskId) => {
     await get().sendMessage({ type: 'RETRY_TASK', data: { taskId } });
+    await get().loadAllData();
+  },
+
+  deleteTask: async (taskId) => {
+    await get().sendMessage({ type: 'DELETE_TASK', data: { taskId } });
     await get().loadAllData();
   },
 

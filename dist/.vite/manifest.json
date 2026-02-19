@@ -1,39 +1,39 @@
 {
   "../../@crx/manifest": {
-    "file": "assets/crx-manifest.js-hOx-ic9l.js",
+    "file": "assets/crx-manifest.js-5MiAcEAI.js",
     "name": "crx-manifest.js",
     "src": "../../@crx/manifest",
     "isEntry": true
   },
-  "_index-BDcumJnu.js": {
-    "file": "assets/index-BDcumJnu.js",
+  "_index-khUcrBfW.js": {
+    "file": "assets/index-khUcrBfW.js",
     "name": "index"
   },
   "src/background/index.ts": {
-    "file": "assets/index.ts-b8mDF_kA.js",
+    "file": "assets/index.ts-YQ2vCJ0B.js",
     "name": "index.ts",
     "src": "src/background/index.ts",
     "isEntry": true,
     "imports": [
-      "_index-BDcumJnu.js"
+      "_index-khUcrBfW.js"
     ]
   },
   "src/content/genspark-monitor.ts": {
-    "file": "assets/genspark-monitor.ts-CZeEDH1s.js",
+    "file": "assets/genspark-monitor.ts-DCtTyUyw.js",
     "name": "genspark-monitor.ts",
     "src": "src/content/genspark-monitor.ts",
     "isEntry": true
   },
   "src/dashboard/index.html": {
-    "file": "assets/dashboard-CYL9v6eH.js",
+    "file": "assets/dashboard-DOQbjB1O.js",
     "name": "dashboard",
     "src": "src/dashboard/index.html",
     "isEntry": true,
     "imports": [
-      "_index-BDcumJnu.js"
+      "_index-khUcrBfW.js"
     ],
     "css": [
-      "assets/dashboard-D9VK2iZj.css"
+      "assets/dashboard-DRYe8qr3.css"
     ]
   }
 }

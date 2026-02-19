@@ -25,7 +25,7 @@ const STATUS_COLORS: Record<string, string> = {
 const ALL_STATUSES = ['pending', 'queued', 'running', 'completed', 'failed', 'retrying', 'skipped'];
 
 export default function TaskManager() {
-  const { tasks, approveTask, skipTask, cancelTask, retryTask } = useDashboardStore();
+  const { tasks, approveTask, skipTask, cancelTask, retryTask, deleteTask } = useDashboardStore();
   const [filter, setFilter] = useState<string>('all');
   const [search, setSearch] = useState('');
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -83,6 +83,7 @@ export default function TaskManager() {
               onSkip={() => skipTask(task.id)}
               onCancel={() => cancelTask(task.id)}
               onRetry={() => retryTask(task.id)}
+              onDelete={() => deleteTask(task.id)}
             />
           ))}
         </div>
@@ -118,7 +119,8 @@ function TaskCard({
   onApprove,
   onSkip,
   onCancel,
-  onRetry
+  onRetry,
+  onDelete
 }: {
   task: Task;
   expanded: boolean;
@@ -127,6 +129,7 @@ function TaskCard({
   onSkip: () => void;
   onCancel: () => void;
   onRetry: () => void;
+  onDelete: () => void;
 }) {
   const elapsed = task.startedAt
     ? ((task.completedAt ?? Date.now()) - task.startedAt) / 1000
@@ -231,6 +234,12 @@ function TaskCard({
                 재시도
               </button>
             )}
+            <button
+              onClick={() => { if (confirm('이 태스크를 목록에서 삭제하시겠습니까?')) onDelete(); }}
+              className="px-4 py-1.5 bg-gray-700 hover:bg-gray-600 rounded-lg text-sm transition-colors text-gray-300"
+            >
+              삭제
+            </button>
           </div>
         </div>
       )}

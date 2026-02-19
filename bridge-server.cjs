@@ -24,34 +24,32 @@ function log(msg) {
 }
 
 // ─── Claude Code를 "단순 실행기"로 사용 ─────────────────────
-// --no-input: 대화 없이 한 번만 실행
-// 프롬프트에 "스스로 판단하지 말고 정확히 아래 지시만 실행" 명시
-function runClaudeCodeDumb(instruction, workDir) {
+// -p - : stdin에서 프롬프트 읽음. write 후 end()로 즉시 닫아 대기 없음.
+// model: 선택 시 --model 전달 (대시보드에서 선택한 모델)
+function runClaudeCodeDumb(instruction, workDir, model) {
+  const args = [
+    '-p', '-',
+    '--output-format', 'json',
+    '--max-turns', '3',
+    '--dangerously-skip-permissions',
+  ];
+  if (model) {
+    args.push('--model', model);
+  }
   return new Promise((resolve) => {
-    const wrappedPrompt = `당신은 코드 실행기입니다. 스스로 판단하거나 설계하지 마세요.
-아래 지시사항을 정확히 그대로 실행만 하세요. 
-추가적인 개선이나 변경을 하지 마세요.
-지시에 없는 파일은 건드리지 마세요.
-
-## 지시사항
-${instruction}
-
-## 규칙
-- 지시된 파일만 생성/수정
-- 지시된 내용만 작성
-- 추가 판단 금지
-- 완료 후 변경 사항 요약만 출력`;
-
-    const child = spawn('claude', [
-      '-p', wrappedPrompt,
-      '--output-format', 'text',
-      '--max-turns', '3',
-    ], {
+    const { spawn } = require('child_process');
+    const child = spawn('claude', args, {
       cwd: workDir || PROJECT_DIR,
-      shell: true,
       env: { ...process.env },
-      timeout: 120000, // 2분 (단순 실행이므로 짧게)
+      timeout: 120000,
+      stdio: ['pipe', 'pipe', 'pipe'],
+      shell: true,
+      windowsHide: true,
     });
+
+    // stdin에 프롬프트를 쓰고 즉시 닫기
+    child.stdin.write(instruction);
+    child.stdin.end();
 
     let stdout = '';
     let stderr = '';
@@ -62,19 +60,14 @@ ${instruction}
     child.on('close', (code) => {
       resolve({
         success: code === 0,
-        output: stdout.trim(),
-        error: code !== 0 ? (stderr || `Exit ${code}`) : null,
+        stdout: stdout.trim(),
+        stderr: stderr.trim(),
         exitCode: code,
       });
     });
 
     child.on('error', (err) => {
-      resolve({
-        success: false,
-        output: '',
-        error: err.message,
-        exitCode: -1,
-      });
+      resolve({ success: false, stdout: '', stderr: err.message, exitCode: -1 });
     });
   });
 }
@@ -153,12 +146,34 @@ function readFile(filePath) {
 }
 
 // ─── 변경 파일 ──────────────────────────────────────────────
-function getChangedFiles() {
+let preTaskFiles = [];
+
+function snapshotFiles() {
   try {
     const diff = execSync('git diff --name-only', { cwd: PROJECT_DIR, encoding: 'utf8' }).trim();
     const untracked = execSync('git ls-files --others --exclude-standard', { cwd: PROJECT_DIR, encoding: 'utf8' }).trim();
     const all = [...diff.split('\n'), ...untracked.split('\n')].filter(Boolean);
     return [...new Set(all)];
+  } catch {
+    return [];
+  }
+}
+
+function getChangedFiles() {
+  try {
+    const current = snapshotFiles();
+    const newFiles = current.filter((f) => !preTaskFiles.includes(f));
+    return newFiles.filter(
+      (f) =>
+        !f.startsWith('src/') &&
+        !f.startsWith('dist/') &&
+        !f.startsWith('node_modules/') &&
+        f !== 'bridge-server.cjs' &&
+        f !== 'package.json' &&
+        f !== 'package-lock.json' &&
+        f !== 'tsconfig.json' &&
+        f !== 'vite.config.ts'
+    );
   } catch {
     return [];
   }
@@ -195,7 +210,7 @@ const server = http.createServer(async (req, res) => {
       // ── Genspark 대화 → Claude Code 실행 (핵심) ──
       if (url === '/execute' && req.method === 'POST') {
         const data = JSON.parse(body);
-        const { agentId, userMessage, claudeResponse } = data;
+        const { agentId, userMessage, claudeResponse, model } = data;
 
         taskCounter++;
         const taskId = `task-${taskCounter}`;
@@ -211,9 +226,11 @@ const server = http.createServer(async (req, res) => {
         log(`[Agent ${agentId}] 태스크 ${taskId} 시작`);
 
         // Genspark 응답에서 "실행 지시"를 추출
-        const instruction = claudeResponse;
+        const instruction = `User request: ${userMessage}\n\nDesign from AI assistant:\n${claudeResponse}\n\nImplement exactly as designed above. Create all necessary files and write the code to disk.`;
 
-        const result = await runClaudeCodeDumb(instruction, PROJECT_DIR);
+        preTaskFiles = snapshotFiles();
+
+        const result = await runClaudeCodeDumb(instruction, PROJECT_DIR, model);
 
         const changedFiles = getChangedFiles();
         const fileContents = {};
@@ -233,35 +250,43 @@ const server = http.createServer(async (req, res) => {
             files: changedFiles,
           });
 
-          log(`[Agent ${agentId}] 태스크 ${taskId} 완료: ${changedFiles.length}개 파일`);
+          // Claude Code JSON에서 비용 추출
+          let cost = 0;
+          try {
+            const parsed = JSON.parse(result.stdout);
+            cost = parsed.total_cost_usd || 0;
+          } catch {}
+
+          log(`[Agent ${agentId}] 태스크 ${taskId} 완료: ${changedFiles.length}개 파일, 비용: $${cost.toFixed(4)}`);
 
           res.writeHead(200, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify({
             success: true,
             taskId,
-            output: result.output,
+            output: result.stdout,
+            cost,
             changedFiles,
             fileContents,
-            reportToGenspark: `## 실행 완료\n변경된 파일: ${changedFiles.join(', ') || '없음'}\n\n출력:\n${result.output.slice(0, 500)}`,
+            reportToGenspark: `## 실행 완료\n변경된 파일: ${changedFiles.join(', ') || '없음'}\n비용: $${cost.toFixed(4)}\n\n출력:\n${result.stdout.slice(0, 500)}`,
           }));
         } else {
           agent.history.push({
             taskId,
             status: 'failed',
             timestamp: Date.now(),
-            error: result.error,
+            error: result.stderr || `Exit ${result.exitCode}`,
           });
 
-          log(`[Agent ${agentId}] 태스크 ${taskId} 실패: ${result.error?.slice(0, 100)}`);
+          log(`[Agent ${agentId}] 태스크 ${taskId} 실패: ${(result.stderr || `Exit ${result.exitCode}`).slice(0, 100)}`);
 
-          const errorReport = buildErrorReport(instruction, result.error, result.output);
+          const errorReport = buildErrorReport(instruction, result.stderr || `Exit ${result.exitCode}`, result.stdout);
 
           res.writeHead(200, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify({
             success: false,
             taskId,
-            error: result.error,
-            output: result.output,
+            error: result.stderr || `Exit ${result.exitCode}`,
+            output: result.stdout,
             reportToGenspark: errorReport,
             changedFiles: getChangedFiles(),
           }));

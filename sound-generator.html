@@ -1,0 +1,643 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>효과음 생성기</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #0f0c29, #302b63, #24243e);
+            min-height: 100vh;
+            color: #fff;
+            padding: 20px;
+        }
+
+        h1 {
+            text-align: center;
+            font-size: 2.5em;
+            margin-bottom: 10px;
+            background: linear-gradient(90deg, #f093fb, #f5576c, #4facfe);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .subtitle {
+            text-align: center;
+            color: #aaa;
+            margin-bottom: 30px;
+            font-size: 0.95em;
+        }
+
+        .container {
+            max-width: 960px;
+            margin: 0 auto;
+        }
+
+        .global-controls {
+            background: rgba(255,255,255,0.05);
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 16px;
+            padding: 20px;
+            margin-bottom: 30px;
+            display: flex;
+            gap: 30px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+
+        .control-group {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            min-width: 140px;
+        }
+
+        .control-group label {
+            font-size: 0.8em;
+            color: #ccc;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .control-group input[type="range"] {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 100%;
+            height: 6px;
+            border-radius: 3px;
+            background: rgba(255,255,255,0.2);
+            outline: none;
+            cursor: pointer;
+        }
+
+        .control-group input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            background: #f093fb;
+            cursor: pointer;
+            box-shadow: 0 0 8px rgba(240,147,251,0.6);
+        }
+
+        .control-group .value {
+            font-size: 0.85em;
+            color: #f093fb;
+            font-weight: bold;
+        }
+
+        .section {
+            margin-bottom: 30px;
+        }
+
+        .section-title {
+            font-size: 1.1em;
+            color: #f093fb;
+            margin-bottom: 14px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .section-title::after {
+            content: '';
+            flex: 1;
+            height: 1px;
+            background: rgba(240,147,251,0.3);
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+            gap: 12px;
+        }
+
+        .sound-btn {
+            background: rgba(255,255,255,0.05);
+            border: 1px solid rgba(255,255,255,0.15);
+            border-radius: 14px;
+            padding: 18px 10px;
+            cursor: pointer;
+            text-align: center;
+            transition: all 0.15s ease;
+            color: #fff;
+            font-size: 0.85em;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 10px;
+            user-select: none;
+        }
+
+        .sound-btn:hover {
+            background: rgba(255,255,255,0.12);
+            border-color: rgba(255,255,255,0.3);
+            transform: translateY(-2px);
+        }
+
+        .sound-btn:active {
+            transform: scale(0.95) translateY(0);
+            background: rgba(240,147,251,0.2);
+            border-color: #f093fb;
+        }
+
+        .sound-btn .icon {
+            font-size: 1.8em;
+        }
+
+        .sound-btn.playing {
+            background: rgba(240,147,251,0.25);
+            border-color: #f093fb;
+            box-shadow: 0 0 18px rgba(240,147,251,0.3);
+        }
+
+        /* Custom sound builder */
+        .builder {
+            background: rgba(255,255,255,0.05);
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 16px;
+            padding: 24px;
+            margin-bottom: 30px;
+        }
+
+        .builder h2 {
+            font-size: 1.1em;
+            margin-bottom: 18px;
+            color: #4facfe;
+        }
+
+        .builder-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 16px;
+            margin-bottom: 18px;
+        }
+
+        .builder select {
+            background: rgba(255,255,255,0.1);
+            border: 1px solid rgba(255,255,255,0.2);
+            border-radius: 8px;
+            color: #fff;
+            padding: 8px 10px;
+            width: 100%;
+            font-size: 0.9em;
+            cursor: pointer;
+            outline: none;
+        }
+
+        .builder select option {
+            background: #302b63;
+        }
+
+        .play-btn {
+            background: linear-gradient(90deg, #f093fb, #f5576c);
+            border: none;
+            border-radius: 10px;
+            color: #fff;
+            padding: 12px 30px;
+            font-size: 1em;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            font-weight: bold;
+            letter-spacing: 1px;
+        }
+
+        .play-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(240,147,251,0.4);
+        }
+
+        .play-btn:active {
+            transform: scale(0.97);
+        }
+
+        /* Visualizer */
+        .visualizer-wrap {
+            margin-bottom: 30px;
+            background: rgba(0,0,0,0.3);
+            border-radius: 16px;
+            padding: 16px;
+            border: 1px solid rgba(255,255,255,0.08);
+        }
+
+        canvas#visualizer {
+            width: 100%;
+            height: 80px;
+            display: block;
+            border-radius: 8px;
+        }
+
+        .footer {
+            text-align: center;
+            color: rgba(255,255,255,0.25);
+            font-size: 0.8em;
+            margin-top: 10px;
+        }
+    </style>
+</head>
+<body>
+<div class="container">
+    <h1>효과음 생성기</h1>
+    <p class="subtitle">Web Audio API 기반 · 클릭만으로 즉시 재생</p>
+
+    <!-- Global Controls -->
+    <div class="global-controls">
+        <div class="control-group">
+            <label>볼륨</label>
+            <input type="range" id="volume" min="0" max="1" step="0.01" value="0.6">
+            <span class="value" id="volumeVal">60%</span>
+        </div>
+        <div class="control-group">
+            <label>피치 배율</label>
+            <input type="range" id="pitch" min="0.25" max="4" step="0.05" value="1">
+            <span class="value" id="pitchVal">×1.00</span>
+        </div>
+        <div class="control-group">
+            <label>속도 배율</label>
+            <input type="range" id="speed" min="0.25" max="3" step="0.05" value="1">
+            <span class="value" id="speedVal">×1.00</span>
+        </div>
+    </div>
+
+    <!-- Visualizer -->
+    <div class="visualizer-wrap">
+        <canvas id="visualizer" width="900" height="80"></canvas>
+    </div>
+
+    <!-- Preset Sounds -->
+    <div class="section">
+        <div class="section-title">🎮 게임 효과음</div>
+        <div class="grid">
+            <button class="sound-btn" onclick="play('coin')">
+                <span class="icon">🪙</span>코인 획득
+            </button>
+            <button class="sound-btn" onclick="play('jump')">
+                <span class="icon">🦘</span>점프
+            </button>
+            <button class="sound-btn" onclick="play('hit')">
+                <span class="icon">💥</span>히트
+            </button>
+            <button class="sound-btn" onclick="play('laser')">
+                <span class="icon">🔫</span>레이저
+            </button>
+            <button class="sound-btn" onclick="play('explosion')">
+                <span class="icon">💣</span>폭발
+            </button>
+            <button class="sound-btn" onclick="play('powerup')">
+                <span class="icon">⬆️</span>파워업
+            </button>
+            <button class="sound-btn" onclick="play('gameover')">
+                <span class="icon">💀</span>게임 오버
+            </button>
+            <button class="sound-btn" onclick="play('levelup')">
+                <span class="icon">🏆</span>레벨업
+            </button>
+        </div>
+    </div>
+
+    <div class="section">
+        <div class="section-title">🔔 UI / 알림</div>
+        <div class="grid">
+            <button class="sound-btn" onclick="play('click')">
+                <span class="icon">🖱️</span>클릭
+            </button>
+            <button class="sound-btn" onclick="play('success')">
+                <span class="icon">✅</span>성공
+            </button>
+            <button class="sound-btn" onclick="play('error')">
+                <span class="icon">❌</span>에러
+            </button>
+            <button class="sound-btn" onclick="play('notification')">
+                <span class="icon">🔔</span>알림
+            </button>
+            <button class="sound-btn" onclick="play('toggle')">
+                <span class="icon">🔄</span>토글
+            </button>
+            <button class="sound-btn" onclick="play('swoosh')">
+                <span class="icon">💨</span>스우시
+            </button>
+        </div>
+    </div>
+
+    <div class="section">
+        <div class="section-title">🌊 자연 / 분위기</div>
+        <div class="grid">
+            <button class="sound-btn" onclick="play('beep')">
+                <span class="icon">📡</span>비프
+            </button>
+            <button class="sound-btn" onclick="play('glitch')">
+                <span class="icon">📺</span>글리치
+            </button>
+            <button class="sound-btn" onclick="play('wind')">
+                <span class="icon">🌬️</span>바람
+            </button>
+            <button class="sound-btn" onclick="play('electric')">
+                <span class="icon">⚡</span>전기
+            </button>
+            <button class="sound-btn" onclick="play('magic')">
+                <span class="icon">✨</span>마법
+            </button>
+            <button class="sound-btn" onclick="play('alarm')">
+                <span class="icon">🚨</span>알람
+            </button>
+        </div>
+    </div>
+
+    <!-- Custom Builder -->
+    <div class="builder">
+        <h2>🎛️ 커스텀 사운드 빌더</h2>
+        <div class="builder-grid">
+            <div class="control-group">
+                <label>파형 (Oscillator)</label>
+                <select id="b_type">
+                    <option value="sine">Sine (사인파)</option>
+                    <option value="square">Square (구형파)</option>
+                    <option value="sawtooth">Sawtooth (톱니파)</option>
+                    <option value="triangle">Triangle (삼각파)</option>
+                </select>
+            </div>
+            <div class="control-group">
+                <label>시작 주파수 (Hz)</label>
+                <input type="range" id="b_freqStart" min="20" max="3000" value="440">
+                <span class="value" id="b_freqStartVal">440 Hz</span>
+            </div>
+            <div class="control-group">
+                <label>끝 주파수 (Hz)</label>
+                <input type="range" id="b_freqEnd" min="20" max="3000" value="220">
+                <span class="value" id="b_freqEndVal">220 Hz</span>
+            </div>
+            <div class="control-group">
+                <label>지속시간 (ms)</label>
+                <input type="range" id="b_duration" min="50" max="3000" value="500">
+                <span class="value" id="b_durationVal">500 ms</span>
+            </div>
+            <div class="control-group">
+                <label>Attack (ms)</label>
+                <input type="range" id="b_attack" min="0" max="500" value="10">
+                <span class="value" id="b_attackVal">10 ms</span>
+            </div>
+            <div class="control-group">
+                <label>Release (ms)</label>
+                <input type="range" id="b_release" min="10" max="2000" value="200">
+                <span class="value" id="b_releaseVal">200 ms</span>
+            </div>
+        </div>
+        <button class="play-btn" onclick="playCustom()">▶ 커스텀 재생</button>
+    </div>
+
+    <div class="footer">Web Audio API · 모든 사운드는 브라우저에서 실시간 합성됩니다</div>
+</div>
+
+<script>
+    let audioCtx = null;
+    let analyser = null;
+    let animFrame = null;
+    const canvas = document.getElementById('visualizer');
+    const ctx2d = canvas.getContext('2d');
+
+    function getAudioCtx() {
+        if (!audioCtx) {
+            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            analyser = audioCtx.createAnalyser();
+            analyser.fftSize = 512;
+            analyser.connect(audioCtx.destination);
+            drawVisualizer();
+        }
+        return audioCtx;
+    }
+
+    function getVolume() { return parseFloat(document.getElementById('volume').value); }
+    function getPitch()  { return parseFloat(document.getElementById('pitch').value); }
+    function getSpeed()  { return parseFloat(document.getElementById('speed').value); }
+
+    /**
+     * 기본 사운드 합성 함수
+     * @param {object} opts - 사운드 옵션
+     */
+    function synth(opts) {
+        const ac = getAudioCtx();
+        const now = ac.currentTime;
+        const spd = getSpeed();
+        const vol = getVolume();
+        const pit = getPitch();
+
+        const gain = ac.createGain();
+        gain.connect(analyser);
+
+        const {
+            type = 'sine',
+            freqStart = 440,
+            freqEnd = 440,
+            duration = 0.3,
+            attack = 0.01,
+            release = 0.1,
+            volume = 1
+        } = opts;
+
+        const dur = duration / spd;
+        const att = attack / spd;
+        const rel = release / spd;
+
+        gain.gain.setValueAtTime(0, now);
+        gain.gain.linearRampToValueAtTime(vol * volume, now + att);
+        gain.gain.setValueAtTime(vol * volume, now + dur - rel);
+        gain.gain.linearRampToValueAtTime(0, now + dur);
+
+        const osc = ac.createOscillator();
+        osc.type = type;
+        osc.frequency.setValueAtTime(freqStart * pit, now);
+        osc.frequency.exponentialRampToValueAtTime(Math.max(freqEnd * pit, 1), now + dur);
+        osc.connect(gain);
+        osc.start(now);
+        osc.stop(now + dur + 0.01);
+    }
+
+    /** 노이즈 버퍼 생성 */
+    function noiseBuffer(ac, seconds) {
+        const sr = ac.sampleRate;
+        const buf = ac.createBuffer(1, sr * seconds, sr);
+        const data = buf.getChannelData(0);
+        for (let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1;
+        return buf;
+    }
+
+    /** 노이즈 기반 사운드 */
+    function noise(opts = {}) {
+        const ac = getAudioCtx();
+        const now = ac.currentTime;
+        const spd = getSpeed();
+        const vol = getVolume();
+
+        const { duration = 0.3, attack = 0.01, release = 0.1, volume = 1, filterFreq = 1000, filterQ = 1 } = opts;
+        const dur = duration / spd;
+
+        const buf = noiseBuffer(ac, dur + 0.1);
+        const src = ac.createBufferSource();
+        src.buffer = buf;
+
+        const filter = ac.createBiquadFilter();
+        filter.type = 'bandpass';
+        filter.frequency.setValueAtTime(filterFreq, now);
+        filter.Q.value = filterQ;
+
+        const gain = ac.createGain();
+        gain.gain.setValueAtTime(0, now);
+        gain.gain.linearRampToValueAtTime(vol * volume, now + attack / spd);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + dur);
+
+        src.connect(filter);
+        filter.connect(gain);
+        gain.connect(analyser);
+        src.start(now);
+        src.stop(now + dur + 0.1);
+    }
+
+    /** 프리셋 사운드 정의 */
+    const presets = {
+        coin: () => {
+            synth({ type: 'square', freqStart: 987, freqEnd: 1319, duration: 0.12, attack: 0.005, release: 0.05 });
+            setTimeout(() => synth({ type: 'square', freqStart: 1319, freqEnd: 1760, duration: 0.15, attack: 0.005, release: 0.08 }), 80);
+        },
+        jump: () => synth({ type: 'square', freqStart: 300, freqEnd: 600, duration: 0.25, attack: 0.01, release: 0.1 }),
+        hit: () => {
+            noise({ duration: 0.18, filterFreq: 800, filterQ: 0.5, volume: 0.9 });
+            synth({ type: 'square', freqStart: 200, freqEnd: 80, duration: 0.15, attack: 0.005, release: 0.08 });
+        },
+        laser: () => synth({ type: 'sawtooth', freqStart: 1200, freqEnd: 200, duration: 0.25, attack: 0.005, release: 0.1 }),
+        explosion: () => {
+            noise({ duration: 0.8, filterFreq: 400, filterQ: 0.3, volume: 1 });
+            synth({ type: 'sawtooth', freqStart: 120, freqEnd: 30, duration: 0.6, attack: 0.01, release: 0.4 });
+        },
+        powerup: () => {
+            [0, 100, 200, 300, 400].forEach((t, i) => {
+                setTimeout(() => synth({ type: 'square', freqStart: 200 + i * 80, freqEnd: 280 + i * 80, duration: 0.12, attack: 0.01, release: 0.05 }), t);
+            });
+        },
+        gameover: () => {
+            [0, 200, 400, 650].forEach((t, i) => {
+                const freqs = [330, 262, 196, 131];
+                setTimeout(() => synth({ type: 'square', freqStart: freqs[i], freqEnd: freqs[i] * 0.9, duration: 0.25, attack: 0.01, release: 0.15 }), t);
+            });
+        },
+        levelup: () => {
+            const notes = [523, 659, 784, 1047];
+            notes.forEach((f, i) => setTimeout(() => synth({ type: 'square', freqStart: f, freqEnd: f, duration: 0.15, attack: 0.01, release: 0.08 }), i * 100));
+        },
+        click: () => synth({ type: 'sine', freqStart: 800, freqEnd: 600, duration: 0.05, attack: 0.001, release: 0.03 }),
+        success: () => {
+            [[523,0],[659,120],[784,240]].forEach(([f,t]) => setTimeout(() => synth({ type: 'sine', freqStart: f, freqEnd: f, duration: 0.2, attack: 0.01, release: 0.1 }), t));
+        },
+        error: () => {
+            [0, 150].forEach(t => setTimeout(() => synth({ type: 'square', freqStart: 220, freqEnd: 180, duration: 0.18, attack: 0.005, release: 0.1 }), t));
+        },
+        notification: () => {
+            synth({ type: 'sine', freqStart: 880, freqEnd: 1100, duration: 0.15, attack: 0.01, release: 0.08 });
+            setTimeout(() => synth({ type: 'sine', freqStart: 880, freqEnd: 1100, duration: 0.15, attack: 0.01, release: 0.08 }), 200);
+        },
+        toggle: () => synth({ type: 'triangle', freqStart: 400, freqEnd: 600, duration: 0.08, attack: 0.005, release: 0.04 }),
+        swoosh: () => {
+            noise({ duration: 0.35, filterFreq: 2000, filterQ: 2, volume: 0.7 });
+            synth({ type: 'sine', freqStart: 800, freqEnd: 200, duration: 0.35, attack: 0.01, release: 0.2, volume: 0.3 });
+        },
+        beep: () => synth({ type: 'sine', freqStart: 1000, freqEnd: 1000, duration: 0.2, attack: 0.01, release: 0.08 }),
+        glitch: () => {
+            for (let i = 0; i < 8; i++) {
+                setTimeout(() => synth({ type: 'square', freqStart: Math.random() * 2000 + 100, freqEnd: Math.random() * 2000 + 100, duration: 0.05, attack: 0.001, release: 0.02, volume: 0.4 }), i * 40);
+            }
+        },
+        wind: () => noise({ duration: 1.5, filterFreq: 600, filterQ: 0.5, volume: 0.6, attack: 0.3, release: 0.8 }),
+        electric: () => {
+            for (let i = 0; i < 6; i++) {
+                setTimeout(() => noise({ duration: 0.05, filterFreq: 3000, filterQ: 5, volume: 0.8 }), i * 50);
+            }
+        },
+        magic: () => {
+            [0, 80, 160, 240, 320].forEach((t, i) => {
+                const f = [523, 659, 784, 1047, 1319][i];
+                setTimeout(() => synth({ type: 'sine', freqStart: f * 2, freqEnd: f, duration: 0.3, attack: 0.01, release: 0.2, volume: 0.5 }), t);
+            });
+        },
+        alarm: () => {
+            let on = true;
+            let count = 0;
+            const id = setInterval(() => {
+                synth({ type: 'square', freqStart: on ? 880 : 660, freqEnd: on ? 880 : 660, duration: 0.12, attack: 0.005, release: 0.05 });
+                on = !on;
+                if (++count >= 8) clearInterval(id);
+            }, 130);
+        }
+    };
+
+    /** 프리셋 재생 */
+    function play(name) {
+        const fn = presets[name];
+        if (fn) fn();
+    }
+
+    /** 커스텀 사운드 재생 */
+    function playCustom() {
+        synth({
+            type: document.getElementById('b_type').value,
+            freqStart: parseFloat(document.getElementById('b_freqStart').value),
+            freqEnd: parseFloat(document.getElementById('b_freqEnd').value),
+            duration: parseFloat(document.getElementById('b_duration').value) / 1000,
+            attack: parseFloat(document.getElementById('b_attack').value) / 1000,
+            release: parseFloat(document.getElementById('b_release').value) / 1000,
+        });
+    }
+
+    /** 슬라이더 표시 업데이트 */
+    function bindSlider(id, valId, fmt) {
+        const el = document.getElementById(id);
+        const vl = document.getElementById(valId);
+        el.addEventListener('input', () => { vl.textContent = fmt(el.value); });
+    }
+
+    bindSlider('volume', 'volumeVal', v => Math.round(v * 100) + '%');
+    bindSlider('pitch', 'pitchVal', v => '×' + parseFloat(v).toFixed(2));
+    bindSlider('speed', 'speedVal', v => '×' + parseFloat(v).toFixed(2));
+    bindSlider('b_freqStart', 'b_freqStartVal', v => v + ' Hz');
+    bindSlider('b_freqEnd', 'b_freqEndVal', v => v + ' Hz');
+    bindSlider('b_duration', 'b_durationVal', v => v + ' ms');
+    bindSlider('b_attack', 'b_attackVal', v => v + ' ms');
+    bindSlider('b_release', 'b_releaseVal', v => v + ' ms');
+
+    /** 비주얼라이저 그리기 */
+    function drawVisualizer() {
+        animFrame = requestAnimationFrame(drawVisualizer);
+        if (!analyser) return;
+
+        const data = new Uint8Array(analyser.frequencyBinCount);
+        analyser.getByteTimeDomainData(data);
+
+        const W = canvas.width;
+        const H = canvas.height;
+        ctx2d.clearRect(0, 0, W, H);
+
+        ctx2d.beginPath();
+        const grad = ctx2d.createLinearGradient(0, 0, W, 0);
+        grad.addColorStop(0, '#f093fb');
+        grad.addColorStop(0.5, '#f5576c');
+        grad.addColorStop(1, '#4facfe');
+        ctx2d.strokeStyle = grad;
+        ctx2d.lineWidth = 2;
+
+        const step = W / data.length;
+        data.forEach((v, i) => {
+            const y = (v / 128 - 1) * (H / 2) + H / 2;
+            i === 0 ? ctx2d.moveTo(0, y) : ctx2d.lineTo(i * step, y);
+        });
+        ctx2d.stroke();
+    }
+</script>
+</body>
+</html>

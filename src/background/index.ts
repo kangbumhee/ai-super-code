@@ -185,6 +185,8 @@ async function executeTaskViaBridge(task: Task): Promise<void> {
     agentRole: 'bridge',
   });
 
+  const modelId = MODEL_TIERS[Math.min(task.currentModelIndex, MODEL_TIERS.length - 1)].id;
+
   try {
     const res = await fetch(`${bridgeUrl}/execute`, {
       method: 'POST',
@@ -193,6 +195,7 @@ async function executeTaskViaBridge(task: Task): Promise<void> {
         agentId,
         userMessage: task.input.userMessage,
         claudeResponse: task.input.claudeResponse,
+        model: modelId,
       }),
     });
 
@@ -219,13 +222,26 @@ async function executeTaskViaBridge(task: Task): Promise<void> {
         await StorageManager.mergeFiles(fileMap);
       }
 
+      const bridgeCost = result.cost || 0;
+
+      if (bridgeCost > 0) {
+        await StorageManager.addCost({
+          timestamp: Date.now(),
+          model: 'claude-code',
+          inputTokens: 0,
+          outputTokens: 0,
+          cost: bridgeCost,
+          taskId: task.id,
+        });
+      }
+
       await queue.updateStatus(task.id, 'completed', {
         output: {
           summary: `Claude Code 완료: ${files.length}개 파일 변경`,
           files,
           commands: [],
           gitMessage: '',
-          cost: 0,
+          cost: bridgeCost,
           model: 'claude-code',
           isCodingTask: true,
           questions: null,
@@ -460,6 +476,16 @@ async function handleMessage(
           status: 'skipped',
           completedAt: Date.now(),
         });
+        await broadcastState();
+        respond({ success: true });
+        break;
+      }
+
+      case 'DELETE_TASK': {
+        const taskId = data?.taskId as string;
+        const tasks = await StorageManager.getTasks();
+        const filtered = tasks.filter((t) => t.id !== taskId);
+        await StorageManager.saveTasks(filtered);
         await broadcastState();
         respond({ success: true });
         break;

@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <title>간단한 계산기</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+      background: #1a1a2e;
+      font-family: 'Segoe UI', sans-serif;
+    }
+
+    .calculator {
+      background: #16213e;
+      border-radius: 16px;
+      padding: 24px;
+      width: 320px;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+    }
+
+    .display {
+      background: #0f3460;
+      border-radius: 10px;
+      padding: 16px;
+      margin-bottom: 20px;
+      text-align: right;
+    }
+
+    .display .expression {
+      color: #a0aec0;
+      font-size: 14px;
+      min-height: 20px;
+      margin-bottom: 4px;
+    }
+
+    .display .value {
+      color: #e2e8f0;
+      font-size: 36px;
+      font-weight: 300;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .buttons {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 12px;
+    }
+
+    button {
+      padding: 18px;
+      border: none;
+      border-radius: 10px;
+      font-size: 18px;
+      cursor: pointer;
+      transition: transform 0.1s, opacity 0.1s;
+    }
+
+    button:active { transform: scale(0.94); opacity: 0.8; }
+
+    .btn-number  { background: #1a1a2e; color: #e2e8f0; }
+    .btn-op      { background: #e94560; color: #fff; }
+    .btn-special { background: #0f3460; color: #a0aec0; }
+    .btn-equal   { background: #e94560; color: #fff; font-size: 22px; }
+    .btn-zero    { grid-column: span 2; }
+  </style>
+</head>
+<body>
+<div class="calculator">
+  <div class="display">
+    <div class="expression" id="expression"></div>
+    <div class="value" id="display">0</div>
+  </div>
+  <div class="buttons">
+    <button class="btn-special" onclick="clearAll()">AC</button>
+    <button class="btn-special" onclick="toggleSign()">+/-</button>
+    <button class="btn-special" onclick="percent()">%</button>
+    <button class="btn-op"      onclick="setOp('/')">÷</button>
+
+    <button class="btn-number" onclick="input('7')">7</button>
+    <button class="btn-number" onclick="input('8')">8</button>
+    <button class="btn-number" onclick="input('9')">9</button>
+    <button class="btn-op"     onclick="setOp('*')">×</button>
+
+    <button class="btn-number" onclick="input('4')">4</button>
+    <button class="btn-number" onclick="input('5')">5</button>
+    <button class="btn-number" onclick="input('6')">6</button>
+    <button class="btn-op"     onclick="setOp('-')">−</button>
+
+    <button class="btn-number" onclick="input('1')">1</button>
+    <button class="btn-number" onclick="input('2')">2</button>
+    <button class="btn-number" onclick="input('3')">3</button>
+    <button class="btn-op"     onclick="setOp('+')">+</button>
+
+    <button class="btn-number btn-zero" onclick="input('0')">0</button>
+    <button class="btn-number" onclick="inputDot()">.</button>
+    <button class="btn-equal"  onclick="calculate()">=</button>
+  </div>
+</div>
+
+<script>
+  let current = '0';
+  let prev = null;
+  let op = null;
+  let resetNext = false;
+
+  const display    = document.getElementById('display');
+  const expression = document.getElementById('expression');
+
+  function render() {
+    display.textContent = current.length > 12 ? parseFloat(current).toPrecision(8) : current;
+  }
+
+  function input(digit) {
+    if (resetNext) { current = digit; resetNext = false; }
+    else current = current === '0' ? digit : current + digit;
+    render();
+  }
+
+  function inputDot() {
+    if (resetNext) { current = '0.'; resetNext = false; render(); return; }
+    if (!current.includes('.')) current += '.';
+    render();
+  }
+
+  function setOp(newOp) {
+    if (op && !resetNext) calculate(true);
+    prev = parseFloat(current);
+    op = newOp;
+    resetNext = true;
+    const sym = { '+': '+', '-': '−', '*': '×', '/': '÷' }[op];
+    expression.textContent = `${prev} ${sym}`;
+  }
+
+  function calculate(chainable = false) {
+    if (op === null || prev === null) return;
+    const b = parseFloat(current);
+    const sym = { '+': '+', '-': '−', '*': '×', '/': '÷' }[op];
+    expression.textContent = `${prev} ${sym} ${b} =`;
+
+    let result;
+    switch (op) {
+      case '+': result = prev + b; break;
+      case '-': result = prev - b; break;
+      case '*': result = prev * b; break;
+      case '/':
+        if (b === 0) { current = '오류'; display.textContent = '오류'; op = null; prev = null; return; }
+        result = prev / b;
+        break;
+    }
+
+    // 부동소수점 보정
+    current = String(parseFloat(result.toPrecision(12)));
+    if (!chainable) { op = null; prev = null; }
+    resetNext = true;
+    render();
+  }
+
+  function clearAll() {
+    current = '0'; prev = null; op = null; resetNext = false;
+    expression.textContent = '';
+    render();
+  }
+
+  function toggleSign() {
+    current = String(parseFloat(current) * -1);
+    render();
+  }
+
+  function percent() {
+    current = String(parseFloat(current) / 100);
+    render();
+  }
+
+  // 키보드 지원
+  document.addEventListener('keydown', e => {
+    if (e.key >= '0' && e.key <= '9') input(e.key);
+    else if (e.key === '.') inputDot();
+    else if (e.key === '+') setOp('+');
+    else if (e.key === '-') setOp('-');
+    else if (e.key === '*') setOp('*');
+    else if (e.key === '/') { e.preventDefault(); setOp('/'); }
+    else if (e.key === 'Enter' || e.key === '=') calculate();
+    else if (e.key === 'Escape') clearAll();
+    else if (e.key === 'Backspace') {
+      if (current.length > 1) current = current.slice(0, -1);
+      else current = '0';
+      render();
+    }
+  });
+</script>
+</body>
+</html>

@@ -36,6 +36,7 @@
   let isEnabled = true;
   let observer: MutationObserver | null = null;
   let pollTimer: ReturnType<typeof setInterval> | null = null;
+  let lastSentText = '';
 
   // ─── 헬퍼 ───────────────────────────────────────────────────
   function $(sel: string, fallbacks?: string[]): Element | null {
@@ -184,7 +185,18 @@
   }
 
   function isResponseComplete(): boolean {
-    return !isStopButtonVisible();
+    if (isStopButtonVisible()) return false;
+    const assistants = document.querySelectorAll(
+      SELECTORS.assistantMessage as string
+    );
+    if (assistants.length === 0) return false;
+    const last = assistants[assistants.length - 1];
+    const lastText = last.textContent?.trim() || '';
+    if (lastText.startsWith('Thinking') && lastText.length < 30) return false;
+    if (lastText === '') return false;
+    // 스트리밍 중 cursor 감지
+    if (last.querySelector('.cursor, [class*="cursor"]')) return false;
+    return true;
   }
 
   // ─── 새 메시지 감지 핸들러 ──────────────────────────────────
@@ -197,6 +209,22 @@
     const currentCount = exchange.messageCount;
     if (currentCount <= lastMessageCount) return;
 
+    // Thinking 상태면 3초 후 다시 시도
+    const resp = exchange.claudeResponse.trim();
+    if (!resp || (resp.startsWith('Thinking') && resp.length < 30)) {
+      setTimeout(() => onNewMessageDetected(), 3000);
+      return;
+    }
+
+    if (!isResponseComplete()) {
+      setTimeout(() => onNewMessageDetected(), 3000);
+      return;
+    }
+
+    // 중복 방지
+    const key = `${currentCount}:${resp.slice(0, 100)}`;
+    if (key === lastSentText) return;
+    lastSentText = key;
     lastMessageCount = currentCount;
 
     console.log('[OmniCoder] 새 대화 감지:', {
@@ -300,7 +328,9 @@
     console.log('[OmniCoder] Observer 시작, 타겟:', target.className || target.tagName);
   }
 
-  // ─── 폴링 (백업) ───────────────────────────────────────────
+  // ─── 폴링 (응답 내용 변화 감지) ───────────────────────────────
+  let lastAssistantText = '';
+
   function startPolling(): void {
     pollTimer = setInterval(() => {
       if (!isEnabled) return;
@@ -308,12 +338,58 @@
       const exchange = getLatestExchange();
       if (!exchange) return;
 
-      if (exchange.messageCount > lastMessageCount) {
-        if (isResponseComplete()) {
-          onNewMessageDetected();
+      const resp = exchange.claudeResponse.trim();
+
+      // 응답이 완료되고 이전과 다르면 감지
+      if (
+        resp &&
+        resp !== lastAssistantText &&
+        !(resp.startsWith('Thinking') && resp.length < 30) &&
+        resp.length > 10 &&
+        isResponseComplete()
+      ) {
+        const key = `${exchange.messageCount}:${resp.slice(0, 100)}`;
+        if (key === lastSentText) return;
+        lastSentText = key;
+        lastAssistantText = resp;
+        if (exchange.messageCount >= lastMessageCount) {
+          lastMessageCount = exchange.messageCount;
+
+          console.log('[OmniCoder] 새 대화 감지 (폴링):', {
+            user: exchange.userMessage.slice(0, 60),
+            assistant: resp.slice(0, 60),
+            count: exchange.messageCount,
+          });
+
+          const text = document.getElementById('omnicoder-text');
+          if (text) {
+            text.textContent = '감지됨!';
+            setTimeout(() => {
+              if (text) text.textContent = 'OmniCoder 감시 중';
+            }, 2000);
+          }
+
+          chrome.runtime.sendMessage(
+            {
+              type: 'NEW_CHAT_DETECTED',
+              data: {
+                userMessage: exchange.userMessage,
+                claudeResponse: resp,
+                timestamp: exchange.timestamp,
+                messageCount: exchange.messageCount,
+              },
+            },
+            (response) => {
+              if (chrome.runtime.lastError) {
+                console.warn('[OmniCoder] sendMessage error:', chrome.runtime.lastError.message);
+              } else {
+                console.log('[OmniCoder] Background 응답:', response);
+              }
+            }
+          );
         }
       }
-    }, 5000);
+    }, 3000);
   }
 
   // ─── MONITOR_STATUS 수신 ───────────────────────────────────
@@ -416,8 +492,9 @@
 
         const exchange = getLatestExchange();
         if (exchange) {
-          lastMessageCount = exchange.messageCount;
-          console.log('[OmniCoder] 초기 메시지 수:', lastMessageCount);
+          lastMessageCount = 0; // 0으로 설정해서 폴링 첫 회차에 바로 감지 가능
+          lastAssistantText = '';
+          console.log('[OmniCoder] 초기화 완료 (폴링 대기)');
         }
       }
     }, 1000);
@@ -453,6 +530,7 @@
       lastMessageCount = 0;
       isResponseInProgress = false;
       pendingDetection = false;
+      lastSentText = '';
 
       if (lastUrl.includes('/agents')) {
         setTimeout(init, 1000);

@@ -18,7 +18,8 @@
   ],
   "host_permissions": [
     "https://www.genspark.ai/*",
-    "https://api.anthropic.com/*"
+    "https://api.anthropic.com/*",
+    "http://127.0.0.1:7842/*"
   ],
   "background": {
     "service_worker": "service-worker-loader.js",
@@ -39,7 +40,7 @@
   "content_scripts": [
     {
       "js": [
-        "assets/genspark-monitor.ts-CZeEDH1s.js"
+        "assets/genspark-monitor.ts-DCtTyUyw.js"
       ],
       "matches": [
         "https://www.genspark.ai/*"
@@ -53,7 +54,7 @@
         "https://www.genspark.ai/*"
       ],
       "resources": [
-        "assets/genspark-monitor.ts-CZeEDH1s.js"
+        "assets/genspark-monitor.ts-DCtTyUyw.js"
       ],
       "use_dynamic_url": false
     }

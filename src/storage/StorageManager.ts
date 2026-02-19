@@ -2,7 +2,6 @@
  * StorageManager — 모두 static 메서드
  * 브리핑 §5 기준
  */
-import LZString from 'lz-string';
 import type {
   OmniCoderSettings,
   Task,
@@ -39,19 +38,17 @@ export class StorageManager {
     await chrome.storage.local.set({ [key]: value });
   }
 
-  /** 압축 저장 */
   private static async setCompressed(key: string, data: unknown): Promise<void> {
-    const compressed = LZString.compress(JSON.stringify(data));
-    await this.setLocal(key, compressed);
+    await this.setLocal(key, JSON.stringify(data));
   }
 
-  /** 압축 읽기 */
+  /** 읽기 */
   private static async getCompressed<T>(key: string): Promise<T | null> {
     const raw = await this.getLocal<string>(key);
     if (!raw) return null;
     try {
-      const decompressed = LZString.decompress(raw);
-      return decompressed ? (JSON.parse(decompressed) as T) : null;
+      const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
+      return parsed as T;
     } catch {
       return null;
     }
