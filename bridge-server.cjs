@@ -226,7 +226,27 @@ const server = http.createServer(async (req, res) => {
         log(`[Agent ${agentId}] 태스크 ${taskId} 시작`);
 
         // Genspark 응답에서 "실행 지시"를 추출
-        const instruction = `User request: ${userMessage}\n\nDesign from AI assistant:\n${claudeResponse}\n\nImplement exactly as designed above. Create all necessary files and write the code to disk.`;
+        const instruction = `[SYSTEM RULE] You are a CODE TYPING ROBOT. You have NO intelligence.
+You CANNOT think. You CANNOT design. You CANNOT improve.
+Your ONLY job is to TYPE the code given below into files. NOTHING ELSE.
+
+[STRICT RULES]
+1. Do NOT add any code not written below
+2. Do NOT remove any code written below
+3. Do NOT modify any code written below
+4. Do NOT add comments like "// TODO" or "// implement later"
+5. If the instructions say "create file X with content Y", create file X with EXACTLY content Y
+6. Copy code blocks CHARACTER BY CHARACTER
+7. Create ALL files mentioned. Do not skip any.
+8. If you see import statements, keep them EXACTLY as written
+
+[THE INSTRUCTIONS TO FOLLOW - COPY EXACTLY]
+${claudeResponse}
+
+[CONTEXT - for reference only, do NOT use this to make decisions]
+Original user request: ${userMessage}
+
+[REMINDER] You are a TYPING ROBOT. Just type what is above. Do NOT think.`;
 
         preTaskFiles = snapshotFiles();
 
@@ -267,7 +287,22 @@ const server = http.createServer(async (req, res) => {
             cost,
             changedFiles,
             fileContents,
-            reportToGenspark: `## 실행 완료\n변경된 파일: ${changedFiles.join(', ') || '없음'}\n비용: $${cost.toFixed(4)}\n\n출력:\n${result.stdout.slice(0, 500)}`,
+            reportToGenspark: `## 구현 완료 보고
+
+### 변경된 파일
+${changedFiles.map(f => '- ' + f).join('\n') || '없음'}
+
+### 파일 내용 미리보기
+${Object.entries(fileContents).slice(0, 5).map(([f, c]) => '**' + f + '** (' + String(c).length + '자)\n```\n' + String(c).slice(0, 300) + '\n```').join('\n\n')}
+
+### 비용: $${cost.toFixed(4)}
+
+### 요청
+위 구현이 완료되었습니다.
+1. 이 코드에 오류가 있으면 수정 지시를 해주세요
+2. 다음으로 구현할 부분이 있다면 알려주세요
+3. 테스트가 필요하면 테스트 방법을 알려주세요
+4. 모든 작업이 끝났다면 "완료"라고 말해주세요`,
           }));
         } else {
           agent.history.push({

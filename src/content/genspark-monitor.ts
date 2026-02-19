@@ -403,6 +403,59 @@
         if (dot) dot.style.background = isEnabled ? '#22c55e' : '#ef4444';
         if (text) text.textContent = isEnabled ? 'OmniCoder 감시 중' : 'OmniCoder 꺼짐';
       }
+
+      // Genspark에 메시지 자동 입력 + 전송 (background에서 요청)
+      if (msg.type === 'SEND_TO_GENSPARK') {
+        const { message } = msg.data as { message: string };
+        const textarea = document.querySelector('textarea.j-search-input') as HTMLTextAreaElement | null;
+        if (!textarea) {
+          console.error('[OmniCoder] 입력창 못 찾음');
+          return;
+        }
+
+        const nativeSetter = Object.getOwnPropertyDescriptor(
+          window.HTMLTextAreaElement.prototype, 'value'
+        )?.set;
+        if (nativeSetter) {
+          nativeSetter.call(textarea, message);
+        } else {
+          textarea.value = message;
+        }
+        textarea.dispatchEvent(new Event('input', { bubbles: true }));
+        textarea.dispatchEvent(new Event('change', { bubbles: true }));
+        textarea.style.height = 'auto';
+        textarea.style.height = textarea.scrollHeight + 'px';
+        textarea.focus();
+
+        const badge = document.getElementById('omnicoder-text');
+        if (badge) badge.textContent = '자동 전송 중...';
+
+        setTimeout(() => {
+          const sendBtn =
+            document.querySelector('.enter-icon-wrapper') as HTMLElement ||
+            document.querySelector('.search-icon-wrapper') as HTMLElement ||
+            document.querySelector('button[type="submit"]') as HTMLElement ||
+            document.querySelector('[class*="send-btn"]') as HTMLElement;
+
+          if (sendBtn) {
+            sendBtn.click();
+            console.log('[OmniCoder] SEND_TO_GENSPARK: 전송 완료');
+          } else {
+            textarea.dispatchEvent(new KeyboardEvent('keydown', {
+              key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true,
+            }));
+          }
+
+          const b = document.getElementById('omnicoder-text');
+          if (b) {
+            b.textContent = '자동 전송 완료!';
+            setTimeout(() => {
+              const b2 = document.getElementById('omnicoder-text');
+              if (b2) b2.textContent = 'OmniCoder 감시 중';
+            }, 3000);
+          }
+        }, 800);
+      }
     }
   );
 

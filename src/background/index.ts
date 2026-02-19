@@ -146,26 +146,94 @@ function detectLanguage(filePath: string): string {
 async function sendToGenspark(text: string): Promise<void> {
   const tabs = await chrome.tabs.query({ url: 'https://www.genspark.ai/*' });
   const targetTab = tabs.find((t) => t.url?.includes('/agents')) || tabs[0];
-  if (!targetTab?.id) return;
+  if (!targetTab?.id) {
+    console.warn('[OmniCoder] Genspark 탭을 찾을 수 없음');
+    return;
+  }
 
   await chrome.scripting.executeScript({
     target: { tabId: targetTab.id },
     func: (message: string) => {
+      // 1. 입력창 찾기
       const textarea = document.querySelector('textarea.j-search-input') as HTMLTextAreaElement | null;
-      if (!textarea) return;
-      textarea.value = message;
+      if (!textarea) {
+        console.error('[OmniCoder] Genspark 입력창을 찾을 수 없음');
+        return;
+      }
+
+      // 2. React 호환 입력 (nativeInputValueSetter 사용)
+      const nativeSetter = Object.getOwnPropertyDescriptor(
+        window.HTMLTextAreaElement.prototype, 'value'
+      )?.set;
+      if (nativeSetter) {
+        nativeSetter.call(textarea, message);
+      } else {
+        textarea.value = message;
+      }
       textarea.dispatchEvent(new Event('input', { bubbles: true }));
       textarea.dispatchEvent(new Event('change', { bubbles: true }));
+
+      // 3. textarea 높이 자동 조절
       textarea.style.height = 'auto';
       textarea.style.height = textarea.scrollHeight + 'px';
+      textarea.focus();
+
+      // 4. 배지 업데이트
       const badge = document.getElementById('omnicoder-text');
-      if (badge) {
-        badge.textContent = '에러 보고 입력됨 — 전송하세요';
-        setTimeout(() => {
-          const b = document.getElementById('omnicoder-text');
-          if (b) b.textContent = 'OmniCoder 감시 중';
-        }, 5000);
-      }
+      if (badge) badge.textContent = '자동 전송 중...';
+
+      // 5. 전송 버튼 자동 클릭 (0.8초 후 — React 상태 반영 대기)
+      setTimeout(() => {
+        // 전송 버튼 후보들
+        const sendBtn =
+          document.querySelector('.enter-icon-wrapper') as HTMLElement ||
+          document.querySelector('.search-icon-wrapper') as HTMLElement ||
+          document.querySelector('button[type="submit"]') as HTMLElement ||
+          document.querySelector('[class*="send-btn"]') as HTMLElement ||
+          document.querySelector('[class*="enter-icon"]') as HTMLElement;
+
+        if (sendBtn) {
+          sendBtn.click();
+          console.log('[OmniCoder] 전송 버튼 클릭 완료');
+        } else {
+          // 전송 버튼 못 찾으면 Enter 키로 대체
+          console.warn('[OmniCoder] 전송 버튼 못 찾음, Enter 키 시도');
+          textarea.dispatchEvent(new KeyboardEvent('keydown', {
+            key: 'Enter',
+            code: 'Enter',
+            keyCode: 13,
+            which: 13,
+            bubbles: true,
+            cancelable: true,
+          }));
+          textarea.dispatchEvent(new KeyboardEvent('keypress', {
+            key: 'Enter',
+            code: 'Enter',
+            keyCode: 13,
+            which: 13,
+            bubbles: true,
+            cancelable: true,
+          }));
+          textarea.dispatchEvent(new KeyboardEvent('keyup', {
+            key: 'Enter',
+            code: 'Enter',
+            keyCode: 13,
+            which: 13,
+            bubbles: true,
+            cancelable: true,
+          }));
+        }
+
+        // 배지 상태 업데이트
+        const b = document.getElementById('omnicoder-text');
+        if (b) {
+          b.textContent = '자동 전송 완료!';
+          setTimeout(() => {
+            const b2 = document.getElementById('omnicoder-text');
+            if (b2) b2.textContent = 'OmniCoder 감시 중';
+          }, 3000);
+        }
+      }, 800);
     },
     args: [text],
   });
@@ -284,6 +352,10 @@ async function executeTaskViaBridge(task: Task): Promise<void> {
         status: 'pending',
         error: result.error,
       });
+
+      // 풀오토 루프: Genspark 응답 대기 후 자동 재처리
+      // (sendToGenspark이 전송까지 하므로, Genspark이 응답하면 content script가 다시 감지함)
+      console.log('[OmniCoder] 에러 보고 전송 완료 → Genspark 응답 대기 중 (풀오토 루프)');
 
       if (settings.notificationsEnabled) {
         showNotification('에러 → Genspark에 보고', '에러 내용이 Genspark에 전송되었습니다. Genspark의 답변을 기다리세요.');
